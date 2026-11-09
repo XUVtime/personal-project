@@ -1,4 +1,4 @@
-(() => {
+﻿(() => {
   "use strict";
 
   const section = document.querySelector(".cinema-scroll");
@@ -9,9 +9,16 @@
   const sightPrev = document.querySelector(".sight-prev");
   const sightNext = document.querySelector(".sight-next");
   const navLinks = [...document.querySelectorAll(".site-nav a")];
-  const originalSightCards = [...document.querySelectorAll(".sight-card")];
-  const originalSightCount = originalSightCards.length;
-  const navStops = { cinema: 0, bridge: 1000, bazaar: 2300 };
+  const navStops = { cinema: 0, bridge: 1000, bazaar: 2300, routes: 3700 };
+  const gameOverlay = document.querySelector("#gameOverlay");
+  const gameHint = document.querySelector("#gameHint");
+  const gameClose = document.querySelector("#gameClose");
+  const gameFrame = document.querySelector("#gameFrame");
+  const gameLoading = document.querySelector("#gameLoading");
+  const GAME_URL = "game/index.html?v=game8";
+  const ROUTES_STOP = 3700;
+  const GAME_HINT_AT = 3680;
+  const GAME_TRIGGER = 3900;
 
   let targetMouseX = 0;
   let targetMouseY = 0;
@@ -22,7 +29,9 @@
   let initialized = false;
   let rafPending = false;
   let sightCards = [];
-  let activeSight = originalSightCount;
+  let activeSight = 0;
+  let gameOpen = false;
+  let gameResetTimer = 0;
 
   const clamp = (v, min = 0, max = 1) => Math.min(max, Math.max(min, v));
   const smoothstep = (e0, e1, v) => {
@@ -38,72 +47,42 @@
   const getScrollDistance = () =>
     clamp(-section.getBoundingClientRect().top, 0, section.offsetHeight - window.innerHeight);
 
+  function getMaxSightIndex() {
+    if (!sightCards.length) return 0;
+    const cardWidth = sightCards[0].offsetWidth;
+    const gap = parseFloat(getComputedStyle(track).columnGap || "0") || 0;
+    const slider = track.parentElement;
+    const sliderStyle = getComputedStyle(slider);
+    const available =
+      slider.clientWidth -
+      parseFloat(sliderStyle.paddingLeft) -
+      parseFloat(sliderStyle.paddingRight);
+    const visibleCards = Math.max(1, Math.floor((available + gap) / (cardWidth + gap)));
+    return Math.max(0, sightCards.length - visibleCards);
+  }
+
   function updateSightSlider() {
     if (!sightCards.length) return;
     const cardWidth = sightCards[0].offsetWidth;
-    const gap = parseFloat(getComputedStyle(track).columnGap || "0");
+    const gap = parseFloat(getComputedStyle(track).columnGap || "0") || 0;
+    const maxIndex = getMaxSightIndex();
+    activeSight = clamp(activeSight, 0, maxIndex);
     root.style.setProperty("--sights-shift", `${-(cardWidth + gap) * activeSight}px`);
     sightCards.forEach((card, index) => {
       card.classList.toggle("is-active", index === activeSight);
     });
-  }
-
-  function jumpSightSlider(index) {
-    track.classList.add("is-jumping");
-    activeSight = index;
-    updateSightSlider();
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        track.classList.remove("is-jumping");
-      });
-    });
-  }
-
-  function normalizeSightSlider() {
-    if (activeSight >= originalSightCount * 2) {
-      jumpSightSlider(activeSight - originalSightCount);
-    } else if (activeSight < originalSightCount) {
-      jumpSightSlider(activeSight + originalSightCount);
-    }
-  }
-
-  function selectSightCard(card) {
-    const index = Number(card.dataset.sightIndex);
-    if (Number.isFinite(index)) {
-      activeSight = index;
-      updateSightSlider();
-    }
+    sightPrev.disabled = activeSight === 0;
+    sightNext.disabled = activeSight >= maxIndex;
   }
 
   function moveSightSlider(direction) {
-    activeSight += direction;
+    activeSight = clamp(activeSight + direction, 0, getMaxSightIndex());
     updateSightSlider();
   }
 
   function setupSightSlider() {
-    track.replaceChildren();
-    for (let setIndex = 0; setIndex < 3; setIndex += 1) {
-      originalSightCards.forEach((card, cardIndex) => {
-        const clone = card.cloneNode(true);
-        clone.dataset.sightIndex = setIndex * originalSightCount + cardIndex;
-        track.appendChild(clone);
-      });
-    }
-
     sightCards = [...track.querySelectorAll(".sight-card")];
-    activeSight = originalSightCount;
-
-    sightCards.forEach((card) => {
-      card.addEventListener("click", () => selectSightCard(card));
-      card.addEventListener("keydown", (event) => {
-        if (event.key === "Enter" || event.key === " ") {
-          event.preventDefault();
-          selectSightCard(card);
-        }
-      });
-    });
-
-    track.addEventListener("transitionend", normalizeSightSlider);
+    activeSight = 0;
     updateSightSlider();
   }
 
@@ -243,6 +222,9 @@
     root.style.setProperty("--sights-top", `${sightsParentTop}px`);
     root.style.setProperty("--sights-screen-top", `${sightsScreenTop}px`);
 
+    gameHint.classList.toggle("is-visible", !gameOpen && targetScroll >= GAME_HINT_AT);
+    if (!gameOpen && targetScroll >= GAME_TRIGGER) openGame();
+
     if (
       Math.abs(smoothScroll - targetScroll) > 0.08 ||
       Math.abs(mouseX - targetMouseX) > 0.001 ||
@@ -261,7 +243,7 @@
   function scrollToNavSection(key) {
     const maxDistance = Math.max(0, section.offsetHeight - window.innerHeight);
     const sectionTop = section.getBoundingClientRect().top + window.scrollY;
-    const distance = key === "routes" ? maxDistance : navStops[key];
+    const distance = navStops[key];
     if (distance === undefined) return;
 
     window.scrollTo({
@@ -270,15 +252,135 @@
     });
   }
 
+  function markGameReady() {
+    gameLoading.classList.add("is-ready");
+  }
+
+  function openGame() {
+    if (gameOpen) return;
+    gameOpen = true;
+    window.clearTimeout(gameResetTimer);
+    gameHint.classList.remove("is-visible");
+    gameOverlay.classList.add("is-open");
+    gameOverlay.setAttribute("aria-hidden", "false");
+    root.classList.add("game-is-open");
+    document.body.classList.add("game-is-open");
+
+    window.setTimeout(() => {
+      if (gameOpen) gameClose.focus({ preventScroll: true });
+    }, 850);
+  }
+
+  function closeGame() {
+    if (!gameOpen) return;
+    gameOpen = false;
+    root.classList.remove("game-is-open");
+    document.body.classList.remove("game-is-open");
+
+    const sectionTop = section.getBoundingClientRect().top + window.scrollY;
+    const previousScrollBehavior = root.style.scrollBehavior;
+    root.style.scrollBehavior = "auto";
+    window.scrollTo(0, sectionTop + ROUTES_STOP);
+    root.style.scrollBehavior = previousScrollBehavior;
+
+    gameOverlay.classList.remove("is-open");
+    gameOverlay.setAttribute("aria-hidden", "true");
+    gameHint.classList.add("is-visible");
+    gameClose.blur();
+
+    window.clearTimeout(gameResetTimer);
+    gameResetTimer = window.setTimeout(() => {
+      if (gameOpen) return;
+      gameLoading.classList.remove("is-ready");
+      gameFrame.src = GAME_URL;
+    }, 800);
+  }
+
   navLinks.forEach((link) => {
     link.addEventListener("click", (event) => {
       const hash = link.getAttribute("href") || "";
       const key = hash.startsWith("#") ? hash.slice(1) : "";
-      if (key !== "routes" && navStops[key] === undefined) return;
+      if (navStops[key] === undefined) return;
       event.preventDefault();
       scrollToNavSection(key);
     });
   });
+
+  gameHint.addEventListener("click", (event) => {
+    event.preventDefault();
+    openGame();
+  });
+  gameClose.addEventListener("click", closeGame);
+  gameOverlay.addEventListener("click", (event) => {
+    if (event.target === gameOverlay) closeGame();
+  });
+  gameOverlay.addEventListener(
+    "wheel",
+    (event) => {
+      if (gameOpen) event.preventDefault();
+    },
+    { passive: false }
+  );
+  gameOverlay.addEventListener(
+    "touchmove",
+    (event) => {
+      if (gameOpen) event.preventDefault();
+    },
+    { passive: false }
+  );
+  document.addEventListener("keydown", (event) => {
+    if (!gameOpen) return;
+    if (event.key === "Escape") closeGame();
+    if (["PageDown", "PageUp", "Home", "End"].includes(event.key)) {
+      event.preventDefault();
+    }
+  });
+  window.addEventListener(
+    "wheel",
+    (event) => {
+      if (!gameOpen && targetScroll >= GAME_HINT_AT && event.deltaY > 0) {
+        openGame();
+      }
+    },
+    { passive: true }
+  );
+  gameFrame.addEventListener("load", markGameReady);
+
+  function gameDocumentReady() {
+    try {
+      const doc = gameFrame.contentDocument;
+      return !!(
+        doc &&
+        doc.readyState === "complete" &&
+        doc.title === "The Aviator 2"
+      );
+    } catch {
+      return false;
+    }
+  }
+
+  if (gameDocumentReady()) {
+    markGameReady();
+  } else {
+    const readyPoll = window.setInterval(() => {
+      if (gameDocumentReady()) {
+        window.clearInterval(readyPoll);
+        markGameReady();
+      }
+    }, 300);
+    window.setTimeout(() => window.clearInterval(readyPoll), 10000);
+  }
+
+  window.setTimeout(() => {
+    if (gameLoading.classList.contains("is-ready")) return;
+    try {
+      if (gameFrame.contentWindow && !gameFrame.contentWindow.location.href.startsWith("about:")) {
+        markGameReady();
+      }
+    } catch {
+      markGameReady();
+    }
+  }, 2600);
 
   window.addEventListener("scroll", requestTick, { passive: true });
   window.addEventListener(
