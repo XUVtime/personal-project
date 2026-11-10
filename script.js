@@ -9,13 +9,13 @@
   const sightPrev = document.querySelector(".sight-prev");
   const sightNext = document.querySelector(".sight-next");
   const navLinks = [...document.querySelectorAll(".site-nav a")];
-  const navStops = { cinema: 0, bridge: 1000, bazaar: 2300, routes: 3700 };
+  const navStops = { cinema: 0, bridge: 1000, bazaar: 2300, routes: 3700, aviator: 3950 };
   const gameOverlay = document.querySelector("#gameOverlay");
   const gameHint = document.querySelector("#gameHint");
   const gameClose = document.querySelector("#gameClose");
   const gameFrame = document.querySelector("#gameFrame");
   const gameLoading = document.querySelector("#gameLoading");
-  const GAME_URL = "game/index.html?v=game8";
+  const GAME_URL = "game/index.html?v=game10";
   const ROUTES_STOP = 3700;
   const GAME_HINT_AT = 3680;
   const GAME_TRIGGER = 3900;

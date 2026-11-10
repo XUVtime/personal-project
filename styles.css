@@ -1117,7 +1117,7 @@ body.game-is-open .game-hint {
 .game-topbar {
   position: absolute;
   top: clamp(12px, 2.2vh, 22px);
-  left: 50%;
+  left: clamp(12px, 2vw, 24px);
   z-index: 3;
   flex: 0 0 auto;
   width: auto;
@@ -1129,7 +1129,6 @@ body.game-is-open .game-hint {
   background: rgba(8, 16, 18, 0.6);
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
   backdrop-filter: blur(14px);
-  transform: translateX(-50%);
   gap: 14px;
 }
 
